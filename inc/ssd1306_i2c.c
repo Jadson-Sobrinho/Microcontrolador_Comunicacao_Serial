@@ -133,16 +133,16 @@ void ssd1306_draw_line(uint8_t *ssd, int x_0, int y_0, int x_1, int y_1, bool se
 }
 
 // Adquire os pixels para um caractere (de acordo com ssd1306_font.h)
-inline int ssd1306_get_font(uint8_t character)
-{
-  if (character >= 'A' && character <= 'Z') {
-    return character - 'A' + 1;
-  }
-  else if (character >= '0' && character <= '9') {
-    return character - '0' + 27;
-  }
-  else
-    return 0;
+inline int ssd1306_get_font(uint8_t character) {
+    if (character >= 'A' && character <= 'Z') {
+        return character - 'A' + 1; // Maiúsculas: índices 1-26
+    } else if (character >= 'a' && character <= 'z') {
+        return character - 'a' + 27; // Minúsculas: índices 27-52
+    } else if (character >= '0' && character <= '9') {
+        return character - '0' + 53; // Números: índices 53-62
+    } else {
+        return 0; // Caractere desconhecido (espaço ou inválido)
+    }
 }
 
 // Desenha um único caractere no display
@@ -153,7 +153,6 @@ void ssd1306_draw_char(uint8_t *ssd, int16_t x, int16_t y, uint8_t character) {
 
     y = y / 8;
 
-    character = toupper(character);
     int idx = ssd1306_get_font(character);
     int fb_idx = y * 128 + x;
 
