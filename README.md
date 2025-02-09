@@ -5,6 +5,8 @@ Este código foi desenvolvido para controlar uma matriz de LEDs, interagir com u
 
 ---
 
+Video ensaio: https://drive.google.com/file/d/11GY3VmbPRLZIRrah3oRHkWYp12Mhjsjc/view?usp=drive_link
+
 ## Dependências
 
 O código depende das seguintes bibliotecas e módulos:
