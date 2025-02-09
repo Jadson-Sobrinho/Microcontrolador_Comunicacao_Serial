@@ -18,6 +18,7 @@
 #include "pio_matrix.pio.h"
 #include "pico/binary_info.h"
 #include "inc/ssd1306.h"
+#include "inc/ssd1306_font.h"
 #include "hardware/i2c.h"
 #include <ctype.h>
 #include <string.h>
@@ -167,6 +168,7 @@ static void gpio_irq_handler(uint gpio, uint32_t events) {
 
         gpio_put(GPIO_LED_GREEN, 1);
         led_on = true;
+        printf("Led verde ligado\n");
         display_message_type = 1;           // Código para "Led verde Ligado"
         display_update_flag = true;
 
@@ -176,6 +178,7 @@ static void gpio_irq_handler(uint gpio, uint32_t events) {
         
         gpio_put(GPIO_LED_GREEN, 0);
         led_on = false;
+        printf("Led verde desligado\n");
         display_message_type = 2;           // Código para "Led verde Desligado"
         display_update_flag = true;
     }
@@ -185,6 +188,7 @@ static void gpio_irq_handler(uint gpio, uint32_t events) {
 
         gpio_put(GPIO_LED_BLUE, 1);
         led_on = true;
+        printf("Led azul ligado\n");
         display_message_type = 3;           // Código para "Led azul Ligado"
         display_update_flag = true;
 
@@ -193,6 +197,7 @@ static void gpio_irq_handler(uint gpio, uint32_t events) {
         
         gpio_put(GPIO_LED_BLUE, 0);
         led_on = false;
+        printf("Led azul desligado\n");
         display_message_type = 4;           // Código para "Led azul Desligado"
         display_update_flag = true;
     }    
@@ -268,23 +273,28 @@ int main() {
     memset(ssd, 0, ssd1306_buffer_length);
     render_on_display(ssd, &frame_area);
 
-
+    
     while (true) {
-        // Lê a tecla do Serial Monitor
-        char key = get_key();
-        if (key != 0) {
-            if (key >= '0' && key <= '9') {
-                animacao_atual = key - '0';
-                animacao_ativa = true;
-                printf("Animação selecionada: %d\n", animacao_atual);
-            } else {
-                printf("Tecla inválida: %c\n", key);
-            }
-        }
+    // Lê a tecla do Serial Monitor
+    char key = get_key();
+    if (key != 0) {
+        if (key >= '0' && key <= '9') {
+            animacao_atual = key - '0';
+            animacao_ativa = true;
+        } 
+        
+        // Atualizar o display com a tecla pressionada
+        memset(ssd, 0, ssd1306_buffer_length);  // Limpa o display
+        char msg[26];  // Buffer para a mensagem a ser exibida
+        snprintf(msg, sizeof(msg), "Tecla: %c", key);
+        ssd1306_draw_string(ssd, 5, 0, msg);  // Exibe a tecla pressionada
+        render_on_display(ssd, &frame_area);  // Atualiza o display
+    }
 
         // Se a flag de atualização do display estiver setada, atualiza o display com a mensagem
         if (display_update_flag) {
             memset(ssd, 0, ssd1306_buffer_length);
+            
             if (display_message_type == 1) {
                 ssd1306_draw_string(ssd, 5, 0, "Led verde Ligado");
             } 
@@ -300,6 +310,7 @@ int main() {
                 ssd1306_draw_string(ssd, 5, 0, "Led azul Desligado");
             }
             
+            
             render_on_display(ssd, &frame_area);
             display_update_flag = false;
         }
@@ -307,11 +318,6 @@ int main() {
         // Se uma animação foi solicitada, executa-a
         if (animacao_ativa) {
             executar_animacao(animacao_atual, valor_led, pio, sm);
-            // Após a execução, desativa a animação para aguardar novo comando
-            animacao_ativa = false;
-            // Opcional: retorne a matriz ao estado "desligado" ou a um frame padrão
-            desenho_pio(desenho0, valor_led, pio, sm);
-            printf("Entre com um dígito (0 a 9) para selecionar a animação:\n");
         }
         sleep_ms(10);
     }
