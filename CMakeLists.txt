@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(Comunicacao_serial Comunicacao_serial.c 
+add_executable(Comunicacao_serial Comunicacao_serial.c ./inc/ssd1306_i2c.c
         ./lib/animacao_0.c
         ./lib/animacao_1.c 
         ./lib/animacao_2.c
@@ -65,6 +65,7 @@ target_link_libraries(Comunicacao_serial
         pico_stdlib
         hardware_pio
         hardware_adc
+        hardware_i2c
         )
 
 # Add the standard include files to the build

@@ -45,12 +45,6 @@ bool animacao_ativa = false; // Estado da animação
 int animacao_atual = 0;  // Começa na animação 0
 const int num_animacoes = 10; // Número total de animações disponíveis
 
-// Callback do temporizador para piscar LED
-bool repeating_timer_callback(struct repeating_timer *t) {
-    led_on = !led_on;  // Alterna o LED
-    gpio_put(GPIO_LED_RED, led_on);
-    return true;  // Mantém o temporizador rodando
-}
 
 // Função para gerar cores RGB para matriz de LEDs
 uint32_t matrix_rgb(double r, double g, double b) {
@@ -73,29 +67,6 @@ void exibir_animacao(double* animacao[], int num_desenhos, uint32_t valor_led, P
         sleep_ms(100);
     }
 }
-
-// Interrupção do botão para ativar/desativar animação
-static void gpio_irq_handler(uint gpio, uint32_t events) {
-    uint32_t current_time = to_ms_since_boot(get_absolute_time()); // Obtém o tempo atual em ms
-
-    if (gpio == button_0) {
-        if (current_time - last_press_time_0 < DEBOUNCE_TIME_MS) return; // Ignora se estiver dentro do tempo de debounce
-        last_press_time_0 = current_time; // Atualiza o tempo do último acionamento
-
-        animacao_atual = (animacao_atual + 1) % num_animacoes; // Avança para a próxima animação
-        animacao_ativa = true;
-    } 
-    else if (gpio == button_1) {
-        if (current_time - last_press_time_1 < DEBOUNCE_TIME_MS) return;
-        last_press_time_1 = current_time;
-
-        animacao_atual = (animacao_atual - 1 + num_animacoes) % num_animacoes; // Retrocede para a animação anterior
-        animacao_ativa = true;
-    }
-
-    printf("Animação atual: %d\n", animacao_atual);
-}
-
 
 
 double* animacao_0[] = {desenho1, desenho2, desenho3, desenho4, desenho5, desenho6, desenho7, desenho8, desenho9};
@@ -167,6 +138,15 @@ void executar_animacao(int animacao_idx, uint32_t valor_led, PIO pio, uint sm) {
     }
 }
 
+// Função para leitura não bloqueante da entrada serial
+char get_key() {
+    int ch = getchar_timeout_us(0); // Tenta ler sem bloquear
+    if (ch != PICO_ERROR_TIMEOUT) {
+        return (char) ch;
+    }
+    return 0;
+}
+
 int main() {
     PIO pio = pio0;
     uint32_t valor_led = 0;
@@ -207,22 +187,30 @@ int main() {
     // Esta estrutura armazenará informações sobre o temporizador configurado.
     struct repeating_timer timer;
 
-    // Configura o temporizador para chamar a função de callback a cada 1 segundo.
-    add_repeating_timer_ms(100, repeating_timer_callback, NULL, &timer);
 
-    
-    // Configurar interrupção no botão
-    gpio_set_irq_enabled_with_callback(button_0, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    gpio_set_irq_enabled(button_1, GPIO_IRQ_EDGE_FALL, true);
-
-
-   // Loop principal
     while (true) {
-
-        if (animacao_ativa) {
-            executar_animacao(animacao_atual, valor_led, pio, sm);
+        // Lê a tecla do Serial Monitor
+        char key = get_key();
+        if (key != 0) {
+            if (key >= '0' && key <= '9') {
+                animacao_atual = key - '0';
+                animacao_ativa = true;
+                printf("Animação selecionada: %d\n", animacao_atual);
+            } else {
+                printf("Tecla inválida: %c\n", key);
+            }
         }
 
-        sleep_ms(10); // Evita uso excessivo da CPU
+        // Se uma animação foi solicitada, executa-a
+        if (animacao_ativa) {
+            executar_animacao(animacao_atual, valor_led, pio, sm);
+            // Após a execução, desativa a animação para aguardar novo comando
+            animacao_ativa = false;
+            // Opcional: retorne a matriz ao estado "desligado" ou a um frame padrão
+            desenho_pio(desenho0, valor_led, pio, sm);
+            printf("Entre com um dígito (0 a 9) para selecionar a animação:\n");
+        }
+        sleep_ms(10);
     }
+    return 0;
 }
