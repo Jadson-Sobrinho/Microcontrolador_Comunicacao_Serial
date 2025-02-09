@@ -16,6 +16,11 @@
 #include "lib/animacao_8.h"
 #include "lib/animacao_9.h"
 #include "pio_matrix.pio.h"
+#include "pico/binary_info.h"
+#include "inc/ssd1306.h"
+#include "hardware/i2c.h"
+#include <ctype.h>
+#include <string.h>
 
 
 #define NUMERO_DE_LEDS 25
@@ -30,6 +35,9 @@
 uint32_t last_press_time_0 = 0;  // Última ativação do botão_0
 uint32_t last_press_time_1 = 0;  // Última ativação do botão_1
 
+const uint I2C_SDA = 14;
+const uint I2C_SCL = 15;
+
 //botão de interupção
 const uint button_0 = 5;
 const uint button_1 = 6;
@@ -37,13 +45,15 @@ const uint button_1 = 6;
 
 // Variáveis globais para controlar o estado do LED e o tempo
 bool led_on = false;
-int pisca_count = 0;
 unsigned long last_time = 0;
-int blink_count = 0;
 bool animacao_ativa = false; // Estado da animação
 
 int animacao_atual = 0;  // Começa na animação 0
 const int num_animacoes = 10; // Número total de animações disponíveis
+
+// Variáveis voláteis para sinalizar atualização do display (usadas na IRQ)
+volatile bool display_update_flag = false;
+volatile int display_message_type = 0; 
 
 
 // Função para gerar cores RGB para matriz de LEDs
@@ -147,6 +157,49 @@ char get_key() {
     return 0;
 }
 
+// Interrupção do botão para ativar/desativar animação
+static void gpio_irq_handler(uint gpio, uint32_t events) {
+    uint32_t current_time = to_ms_since_boot(get_absolute_time()); // Obtém o tempo atual em ms
+
+    if (gpio == button_0 && led_on == false) {
+        if (current_time - last_press_time_0 < DEBOUNCE_TIME_MS) return; // Ignora se estiver dentro do tempo de debounce
+        last_press_time_0 = current_time; // Atualiza o tempo do último acionamento
+
+        gpio_put(GPIO_LED_GREEN, 1);
+        led_on = true;
+        display_message_type = 1;           // Código para "Led verde Ligado"
+        display_update_flag = true;
+
+    
+    } 
+    else if (gpio == button_0 && led_on == true) {
+        
+        gpio_put(GPIO_LED_GREEN, 0);
+        led_on = false;
+        display_message_type = 2;           // Código para "Led verde Desligado"
+        display_update_flag = true;
+    }
+    else if (gpio == button_1 && led_on == false) {
+        if (current_time - last_press_time_1 < DEBOUNCE_TIME_MS) return;
+        last_press_time_1 = current_time;
+
+        gpio_put(GPIO_LED_BLUE, 1);
+        led_on = true;
+        display_message_type = 3;           // Código para "Led azul Ligado"
+        display_update_flag = true;
+
+    }
+    else if (gpio == button_1 && led_on == true) {
+        
+        gpio_put(GPIO_LED_BLUE, 0);
+        led_on = false;
+        display_message_type = 4;           // Código para "Led azul Desligado"
+        display_update_flag = true;
+    }    
+
+}
+
+
 int main() {
     PIO pio = pio0;
     uint32_t valor_led = 0;
@@ -154,6 +207,10 @@ int main() {
 
     set_sys_clock_khz(128000, false);
     stdio_init_all();
+
+    // Configurar interrupção no botão
+    gpio_set_irq_enabled_with_callback(button_0, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    gpio_set_irq_enabled(button_1, GPIO_IRQ_EDGE_FALL, true);
 
 
     //Inicialização dos LEDs
@@ -187,6 +244,30 @@ int main() {
     // Esta estrutura armazenará informações sobre o temporizador configurado.
     struct repeating_timer timer;
 
+        // Inicialização do i2c
+        i2c_init(i2c1, ssd1306_i2c_clock * 1000);
+        gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
+        gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
+        gpio_pull_up(I2C_SDA);
+        gpio_pull_up(I2C_SCL);
+    
+        // Processo de inicialização completo do OLED SSD1306
+        ssd1306_init();
+    
+    // Configura a área de renderização do display
+    struct render_area frame_area = {
+        .start_column = 0,
+        .end_column = ssd1306_width - 1,
+        .start_page = 0,
+        .end_page = ssd1306_n_pages - 1
+    };
+    calculate_render_area_buffer_length(&frame_area);
+    
+    // Cria um buffer para o display e limpa o display
+    uint8_t ssd[ssd1306_buffer_length];
+    memset(ssd, 0, ssd1306_buffer_length);
+    render_on_display(ssd, &frame_area);
+
 
     while (true) {
         // Lê a tecla do Serial Monitor
@@ -199,6 +280,28 @@ int main() {
             } else {
                 printf("Tecla inválida: %c\n", key);
             }
+        }
+
+        // Se a flag de atualização do display estiver setada, atualiza o display com a mensagem
+        if (display_update_flag) {
+            memset(ssd, 0, ssd1306_buffer_length);
+            if (display_message_type == 1) {
+                ssd1306_draw_string(ssd, 5, 0, "Led verde Ligado");
+            } 
+            else if (display_message_type == 2) {
+                ssd1306_draw_string(ssd, 5, 0, "Led verde Desligado");
+            } 
+            else if (display_message_type == 3)
+            {
+                ssd1306_draw_string(ssd, 5, 0, "Led azul ligado");
+            } 
+            else if (display_message_type == 4)
+            {
+                ssd1306_draw_string(ssd, 5, 0, "Led azul Desligado");
+            }
+            
+            render_on_display(ssd, &frame_area);
+            display_update_flag = false;
         }
 
         // Se uma animação foi solicitada, executa-a
